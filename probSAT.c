@@ -16,8 +16,10 @@
 #include <limits.h>
 #include <float.h>
 #include <getopt.h>
+#include <assert.h>
 #include <signal.h>
 
+#define PROB_MB(make_cnt, break_cnt) probsMakeBreak[(make_cnt) * (maxNumOccurences + 1) + break_cnt]
 #define MAXCLAUSELENGTH 10000 //maximum number of literals per clause //TODO: eliminate this limit
 #define STOREBLOCK  20000
 # undef LLONG_MAX
@@ -62,17 +64,18 @@ int *whereFalse;
 /** The number of true literals in each clause. */
 unsigned short *numTrueLit;
 /*the number of clauses the variable i will make unsat if flipped*/
-int *breaks;
+int *breaks, *makes;
 /** critVar[i]=j tells that for clause i the variable j is critically responsible for satisfying i.*/
 int *critVar;
 int bestVar;
 
 /*----probSAT variables----*/
 /** Look-up table for the functions. The values are computed in the initProbSAT method.*/
-double *probsBreak;
+double *probsBreak, *probsMakeBreak;
 /** contains the probabilities of the variables from an unsatisfied clause*/
 double *probs;
 double cb; //for break
+double cm; //for make
 double eps = 1.0;
 int fct = 0; //function to use 0= poly 1=exp
 int caching = 0;
@@ -132,6 +135,7 @@ void printSolverParameters() {
 		printf("c %-20s: %-20s\n", "using:", "exponential function");
 
 	printf("c %-20s: %6.6f\n", "cb", cb);
+	printf("c %-20s: %6.6f\n", "cm", cm);
 	if (fct == 0) { //poly
 		printf("c %-20s: %-20s\n", "function:", "probsBreak[break]*probsMake[make] = pow((eps + break), -cb);");
 		printf("c %-20s: %6.6f\n", "eps", eps);
@@ -302,6 +306,7 @@ static inline void parseFile() {
 	}
 	probs = (double*) malloc(sizeof(double) * (numVars + 1));
 	breaks = (int*) malloc(sizeof(int) * (numVars + 1));
+	makes = (int*) malloc(sizeof(int) * (numVars + 1));
 	free(numOccurrenceT);
 	fclose(fp);
 }
@@ -315,12 +320,17 @@ static inline void init() {
 		numTrueLit[i] = 0;
 		whereFalse[i] = -1;
 	}
-
+	printf("Initial Assignment: ");
 	for (i = 1; i <= numVars; i++) {
 		atom[i] = rand() % 2;
+		printf("%d, ", i * (atom[i] ? 1 : -1));
 		breaks[i] = 0;
+		makes[i] = 0;
 	}
-	//pass trough all clauses and apply the assignment previously generated
+	printf("\n");
+
+
+	// pass trough all clauses and apply the assignment previously generated
 	for (i = 1; i <= numClauses; i++) {
 		j = 0;
 		while ((lit = clause[i][j])) {
@@ -339,9 +349,24 @@ static inline void init() {
 			//add this clause to the list of unsat caluses.
 			falseClause[numFalse] = i;
 			whereFalse[i] = numFalse;
+			j = 0;
+			while ((lit = clause[i][j])) {
+				makes[abs(lit)] += 1;
+				j++;
+			}
 			numFalse++;
 		}
 	}
+	printf("Initial Breaks: ");
+	for (i = 1; i <= numVars; i++) {
+		printf("%d, ", breaks[i]);
+	}
+	printf("\n");
+	printf("Initial Makes: ");
+	for (i = 1; i <= numVars; i++) {
+		printf("%d, ", makes[i]);
+	}
+	printf("\n");
 }
 
 /** Checks whether the assignment from atom is a satisfying assignment.*/
@@ -370,39 +395,69 @@ static inline void pickAndFlipNC() {
 	int rClause, tClause;
 	rClause = falseClause[flip % numFalse]; //random unsat clause
 	bestVar = abs(clause[rClause][0]);
+	assert(numTrueLit[rClause] == 0);
 	double randPosition;
 	int lit;
 	double sumProb = 0;
 	int xMakesSat = 0;
 	i = 0;
+	printf("Assignment: ");
+	for (i = 1; i <= numVars; i++) {
+		printf("%d, ", i * (atom[i] ? 1 : -1));
+	}
+	i = 0;
+	printf("\n");
 	while ((lit = clause[rClause][i])) {
 		breaks[i] = 0;
+		makes[i] = 0;
+
 		//lit = clause[rClause][i];
 		//numOccurenceX = numOccurrence[numVars - lit]; //only the negated occurrence of lit will count for break
 		j=0;
-		while ((tClause = occurrence[numVars - lit][j])){
+		while ((tClause = occurrence[numVars + lit][j])){
+
+			assert(rClause != tClause);
 			if (numTrueLit[tClause] == 1)
 				breaks[i]++;
 			j++;
 		}
-		probs[i] = probsBreak[breaks[i]];
+		j=0;
+		while ((tClause = occurrence[numVars - lit][j])){
+			if (numTrueLit[tClause] == 0)
+				makes[i]++;
+			j++;
+		}
+		if (fct != 2)
+			probs[i] = probsBreak[breaks[i]];
+		else {
+			probs[i] = PROB_MB(makes[i], breaks[i]);
+			printf("%d (%d %d) -> %f, ", lit, makes[i], breaks[i], probs[i]);
+		}
 		sumProb += probs[i];
 		i++;
 	}
-	randPosition = (double) (rand()) / RAND_MAX * sumProb;
-	for (i = i - 1; i != 0; i--) {
-		sumProb -= probs[i];
-		if (sumProb <= randPosition)
-			break;
+	printf("\n");
+	if (sumProb != 0) {
+		randPosition = (double) (rand()) / RAND_MAX * sumProb;
+		for (i = i - 1; i != 0; i--) {
+			sumProb -= probs[i];
+			if (sumProb <= randPosition)
+				break;
+		}
+	} else {
+		randPosition = rand() % i;
+		i = randPosition;
 	}
 	bestVar = abs(clause[rClause][i]);
-
+	printf("Var %d, Makes %d, Breaks %d\n", bestVar, makes[bestVar], breaks[bestVar]);
+	
 	//flip bestvar
 	if (atom[bestVar])
 		xMakesSat = -bestVar; //if x=1 then all clauses containing -x will be made sat after fliping x
 	else
 		xMakesSat = bestVar; //if x=0 then all clauses containing x will be made sat after fliping x
 	atom[bestVar] = 1 - atom[bestVar];
+
 	//1. Clauses that contain xMakeSAT will get SAT if not already SAT
 	//numOccurenceX = numOccurrence[numVars + xMakesSat];
 	i = 0;
@@ -430,6 +485,16 @@ static inline void pickAndFlipNC() {
 		numTrueLit[tClause]--;
 		i++;
 	}
+	// printf("Updated Breaks: ");
+	// for (i = 1; i <= numVars; i++) {
+	// 	printf("%d, ", breaks[i]);
+	// }
+	// printf("\n");
+	// printf("Updated Makes: ");
+	// for (i = 1; i <= numVars; i++) {
+	// 	printf("%d, ", makes[i]);
+	// }
+	// printf("\n");
 	//fliping done!
 }
 static inline void pickAndFlip() {
@@ -460,7 +525,11 @@ static inline void pickAndFlip() {
 		xMakesSat = bestVar; //if x=0 then all clauses containing x will be made sat after fliping x
 
 	atom[bestVar] = 1 - atom[bestVar];
-
+	printf("New Assignment: ");
+	for (i = 1; i <= numVars; i++) {
+		printf("%d, ", i * (atom[i] ? 1 : -1));
+	}
+	printf("\n");
 	//1. all clauses that contain the literal xMakesSat will become SAT, if they where not already sat.
 	i = 0;
 	while ((tClause = occurrence[xMakesSat + numVars][i])) {
@@ -473,6 +542,7 @@ static inline void pickAndFlip() {
 			critVar[tClause] = abs(xMakesSat); //this variable is now critically responsible for satisfying tClause
 			//adapt the scores of the variables
 			//the score of x has to be decreased by one because x is critical and will break this clause if fliped.
+			makes[bestVar]--;
 			breaks[bestVar]++;
 		} else {
 			//if the clause is satisfied by only one literal then the score has to be increased by one for this var.
@@ -496,6 +566,10 @@ static inline void pickAndFlip() {
 			numFalse++;
 			//the score of x has to be increased by one because it is not breaking any more for this clause.
 			breaks[bestVar]--;
+			while ((var = abs(clause[tClause][j]))) {
+				makes[var]++;
+				j++;
+			}
 			//the scores of all variables have to be increased by one ; inclusive x because flipping them will make the clause again sat
 		} else if (numTrueLit[tClause] == 2) { //find which literal is true and make it critical and decrease its score
 			j = 0;
@@ -511,7 +585,16 @@ static inline void pickAndFlip() {
 		numTrueLit[tClause]--;
 		i++;
 	}
-
+	printf("Updated Breaks: ");
+	for (i = 1; i <= numVars; i++) {
+		printf("%d, ", breaks[i]);
+	}
+	printf("\n");
+	printf("Updated Makes: ");
+	for (i = 1; i <= numVars; i++) {
+		printf("%d, ", makes[i]);
+	}
+	printf("\n");
 }
 
 double elapsed_seconds(void) {
@@ -544,7 +627,7 @@ static inline void printUsage() {
 	printf("./probSAT [options] <DIMACS CNF instance> [<seed>]\n");
 	printf("\nprobSAT options:\n");
 	printf("which function to use:\n");
-	printf("--fct <0,1> : 0 =  polynomial; 1 = exponential [default = 0]\n");
+	printf("--fct <0,1,2> : 0 =  polynomial; 1 = exponential, 2 = tanh make/break [default = 0]\n");
 	printf("--eps <double_value> : eps>0 (only valid when --fct 0)[default = 1.0]\n");
 	printf("which constant to use in the functions:\n");
 	printf("--cb <double_value> : constant for break [default = k dependet]\n");
@@ -556,7 +639,16 @@ static inline void printUsage() {
 	printf("--help, -h : output this help\n");
 	printf("----------------------------------------------------------\n\n");
 }
-
+void initTMB() {
+	int i, j;
+	probsMakeBreak = (double*) malloc(sizeof(double) * (maxNumOccurences + 1) * (maxNumOccurences + 1));
+	// index as make, break
+	for (i = 0; i <= maxNumOccurences; i++) {
+		for (j = 0; j <= maxNumOccurences; j++) {
+			PROB_MB(i, j) = tanh(cm*i) * (1-tanh(cb*j));
+		}
+	}
+}
 void initPoly() {
 	int i;
 	probsBreak = (double*) malloc(sizeof(double) * (maxNumOccurences + 1));
@@ -607,6 +699,10 @@ void parseParameters(int argc, char *argv[]) {
 		case 'b':
 			cb = atof(optarg);
 			cb_spec = 1;
+			break;
+		case 'k':
+			cm = atof(optarg);
+			cm_spec = 1;
 			break;
 		case 't': //maximum number of tries to solve the problems within the maxFlips
 			maxTries = atoi(optarg);
@@ -685,7 +781,7 @@ void setupParameters() {
 		if (maxClauseSize <= 3) {
 			cb = 2.06;
 			eps = 0.9;
-
+			cm = 1.0;
 		} else if (maxClauseSize <= 4)
 			cb = 2.85;
 		else if (maxClauseSize <= 5)
@@ -703,8 +799,10 @@ void setupParameters() {
 	}
 	if (fct == 0)
 		initLookUpTable = initPoly;
-	else
+	else if (fct == 1)
 		initLookUpTable = initExp;
+	else
+		initLookUpTable = initTMB;
 }
 
 int main(int argc, char *argv[]) {
