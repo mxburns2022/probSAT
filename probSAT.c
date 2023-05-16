@@ -400,13 +400,13 @@ static inline void pickAndFlipNC() {
 	int lit;
 	double sumProb = 0;
 	int xMakesSat = 0;
+	// i = 0;
+	// printf("Assignment: ");
+	// for (i = 1; i <= numVars; i++) {
+	// 	printf("%d, ", i * (atom[i] ? 1 : -1));
+	// }
 	i = 0;
-	printf("Assignment: ");
-	for (i = 1; i <= numVars; i++) {
-		printf("%d, ", i * (atom[i] ? 1 : -1));
-	}
-	i = 0;
-	printf("\n");
+	// printf("\n");
 	while ((lit = clause[rClause][i])) {
 		breaks[i] = 0;
 		makes[i] = 0;
@@ -414,15 +414,13 @@ static inline void pickAndFlipNC() {
 		//lit = clause[rClause][i];
 		//numOccurenceX = numOccurrence[numVars - lit]; //only the negated occurrence of lit will count for break
 		j=0;
-		while ((tClause = occurrence[numVars + lit][j])){
-
-			assert(rClause != tClause);
+		while ((tClause = occurrence[numVars - lit][j])){
 			if (numTrueLit[tClause] == 1)
 				breaks[i]++;
 			j++;
 		}
 		j=0;
-		while ((tClause = occurrence[numVars - lit][j])){
+		while ((tClause = occurrence[numVars + lit][j])){
 			if (numTrueLit[tClause] == 0)
 				makes[i]++;
 			j++;
@@ -431,12 +429,12 @@ static inline void pickAndFlipNC() {
 			probs[i] = probsBreak[breaks[i]];
 		else {
 			probs[i] = PROB_MB(makes[i], breaks[i]);
-			printf("%d (%d %d) -> %f, ", lit, makes[i], breaks[i], probs[i]);
+			// printf("%d (%d %d) -> %f, ", lit, makes[i], breaks[i], probs[i]);
 		}
 		sumProb += probs[i];
 		i++;
 	}
-	printf("\n");
+	// printf("\n");
 	if (sumProb != 0) {
 		randPosition = (double) (rand()) / RAND_MAX * sumProb;
 		for (i = i - 1; i != 0; i--) {
@@ -449,7 +447,7 @@ static inline void pickAndFlipNC() {
 		i = randPosition;
 	}
 	bestVar = abs(clause[rClause][i]);
-	printf("Var %d, Makes %d, Breaks %d\n", bestVar, makes[bestVar], breaks[bestVar]);
+	// printf("Var %d, Makes %d, Breaks %d\n", bestVar, makes[bestVar], breaks[bestVar]);
 	
 	//flip bestvar
 	if (atom[bestVar])
@@ -779,9 +777,9 @@ void setupParameters() {
 	}
 	if (!cb_spec) {
 		if (maxClauseSize <= 3) {
-			cb = 2.06;
+			cb = 0.5;
 			eps = 0.9;
-			cm = 1.0;
+			cm = 0.5;
 		} else if (maxClauseSize <= 4)
 			cb = 2.85;
 		else if (maxClauseSize <= 5)
