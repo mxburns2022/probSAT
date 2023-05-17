@@ -777,7 +777,11 @@ void setupParameters() {
 	}
 	if (!cb_spec) {
 		if (maxClauseSize <= 3) {
-			cb = 0.5;
+			if (fct != 2) {
+				cb = 2.06;
+			} else {
+				cb = 0.5;
+			}
 			eps = 0.9;
 			cm = 0.5;
 		} else if (maxClauseSize <= 4)
