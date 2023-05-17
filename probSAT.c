@@ -320,15 +320,6 @@ static inline void init() {
 		numTrueLit[i] = 0;
 		whereFalse[i] = -1;
 	}
-	printf("Initial Assignment: ");
-	for (i = 1; i <= numVars; i++) {
-		atom[i] = rand() % 2;
-		printf("%d, ", i * (atom[i] ? 1 : -1));
-		breaks[i] = 0;
-		makes[i] = 0;
-	}
-	printf("\n");
-
 
 	// pass trough all clauses and apply the assignment previously generated
 	for (i = 1; i <= numClauses; i++) {
@@ -357,16 +348,6 @@ static inline void init() {
 			numFalse++;
 		}
 	}
-	printf("Initial Breaks: ");
-	for (i = 1; i <= numVars; i++) {
-		printf("%d, ", breaks[i]);
-	}
-	printf("\n");
-	printf("Initial Makes: ");
-	for (i = 1; i <= numVars; i++) {
-		printf("%d, ", makes[i]);
-	}
-	printf("\n");
 }
 
 /** Checks whether the assignment from atom is a satisfying assignment.*/
