@@ -320,7 +320,10 @@ static inline void init() {
 		numTrueLit[i] = 0;
 		whereFalse[i] = -1;
 	}
-
+	for (i = 1; i <= numVars; i++) {
+		atom[i] = rand() % 2;
+		breaks[i] = 0;
+	}
 	// pass trough all clauses and apply the assignment previously generated
 	for (i = 1; i <= numClauses; i++) {
 		j = 0;
@@ -368,9 +371,100 @@ static inline int checkAssignment() {
 	return 1;
 }
 
+static inline void pickAndFlipNC() {
+	register int i, j;
+	int bestVar;
+	int rClause, tClause;
+	rClause = falseClause[flip % numFalse]; //random unsat clause
+	bestVar = abs(clause[rClause][0]);
+	assert(numTrueLit[rClause] == 0);
+	double randPosition;
+	int lit;
+	double sumProb = 0;
+	int xMakesSat = 0;
+	// i = 0;
+	// printf("Assignment: ");
+	// for (i = 1; i <= numVars; i++) {
+	// 	printf("%d, ", i * (atom[i] ? 1 : -1));
+	// }
+	i = 0;
+	// printf("\n");
+	while ((lit = clause[rClause][i])) {
+		breaks[i] = 0;
+		makes[i] = 0;
+
+		//lit = clause[rClause][i];
+		//numOccurenceX = numOccurrence[numVars - lit]; //only the negated occurrence of lit will count for break
+		j=0;
+		while ((tClause = occurrence[numVars - lit][j])){
+			if (numTrueLit[tClause] == 1)
+				breaks[i]++;
+			j++;
+		}
+		probs[i] = probsBreak[breaks[i]];
+		sumProb += probs[i];
+		i++;
+	}
+	// printf("\n");
+	randPosition = (double) (rand()) / RAND_MAX * sumProb;
+	for (i = i - 1; i != 0; i--) {
+		sumProb -= probs[i];
+		if (sumProb <= randPosition)
+			break;
+	}
+	
+	bestVar = abs(clause[rClause][i]);
+	// printf("Var %d, Makes %d, Breaks %d\n", bestVar, makes[bestVar], breaks[bestVar]);
+	
+	//flip bestvar
+	if (atom[bestVar])
+		xMakesSat = -bestVar; //if x=1 then all clauses containing -x will be made sat after fliping x
+	else
+		xMakesSat = bestVar; //if x=0 then all clauses containing x will be made sat after fliping x
+	atom[bestVar] = 1 - atom[bestVar];
+
+	//1. Clauses that contain xMakeSAT will get SAT if not already SAT
+	//numOccurenceX = numOccurrence[numVars + xMakesSat];
+	i = 0;
+	while ((tClause = occurrence[xMakesSat + numVars][i])) {
+		//if the clause is unsat it will become SAT so it has to be removed from the list of unsat-clauses.
+		if (numTrueLit[tClause] == 0) {
+			//remove from unsat-list
+			falseClause[whereFalse[tClause]] = falseClause[--numFalse]; //overwrite this clause with the last clause in the list.
+			whereFalse[falseClause[numFalse]] = whereFalse[tClause];
+			whereFalse[tClause] = -1;
+		}
+		numTrueLit[tClause]++; //the number of true Lit is increased.
+		i++;
+	}
+	//2. all clauses that contain the literal -xMakesSat=0 will not be longer satisfied by variable x.
+	//all this clauses contained x as a satisfying literal
+	//numOccurenceX = numOccurrence[numVars - xMakesSat];
+	i = 0;
+	while ((tClause = occurrence[numVars - xMakesSat][i])) {
+		if (numTrueLit[tClause] == 1) { //then xMakesSat=1 was the satisfying literal.
+			falseClause[numFalse] = tClause;
+			whereFalse[tClause] = numFalse;
+			numFalse++;
+		}
+		numTrueLit[tClause]--;
+		i++;
+	}
+	// printf("Updated Breaks: ");
+	// for (i = 1; i <= numVars; i++) {
+	// 	printf("%d, ", breaks[i]);
+	// }
+	// printf("\n");
+	// printf("Updated Makes: ");
+	// for (i = 1; i <= numVars; i++) {
+	// 	printf("%d, ", makes[i]);
+	// }
+	// printf("\n");
+	//fliping done!
+}
 //go trough the unsat clauses with the flip counter and DO NOT pick RANDOM unsat clause!!
 // do not cache the break values but compute them on the fly (this is also the default implementation of WalkSAT in UBCSAT)
-static inline void pickAndFlipNC() {
+static inline void pickAndFlipNC_MB() {
 	register int i, j;
 	int bestVar;
 	int rClause, tClause;
@@ -741,8 +835,11 @@ void setupSignalHandler() {
 
 void setupParameters() {
 	if (!caching_spec) {
-		if (maxClauseSize <= 3){
+		if (maxClauseSize <= 3 && fct != 2){
 			pickAndFlipVar = pickAndFlipNC; //no caching of the break values in case of 3SAT
+			caching =0;
+		} else if (maxClauseSize <= 3 && fct == 2) {
+			pickAndFlipVar = pickAndFlipNC_MB; //no caching of the break values in case of 3SAT
 			caching =0;
 		}
 		else{
