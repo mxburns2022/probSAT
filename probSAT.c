@@ -131,6 +131,8 @@ void printSolverParameters() {
 	printf("c %-20s: %-20s\n", "using:", "only break");
 	if (fct == 0)
 		printf("c %-20s: %-20s\n", "using:", "polynomial function");
+	else if (fct == 2)
+		printf("c %-20s: %-20s\n", "using:", "TMB function");
 	else
 		printf("c %-20s: %-20s\n", "using:", "exponential function");
 
@@ -139,7 +141,10 @@ void printSolverParameters() {
 	if (fct == 0) { //poly
 		printf("c %-20s: %-20s\n", "function:", "probsBreak[break]*probsMake[make] = pow((eps + break), -cb);");
 		printf("c %-20s: %6.6f\n", "eps", eps);
-	} else { //exp
+	} else if (fct == 2) {
+		printf("c %-20s: %-20s\n", "function:", "probsBreak[break]*probsMake[make] = tanh(cm*make) * (1-tanh(cb*break));");
+	}
+	else{ //exp
 		printf("c %-20s: %-20s\n", "function:", "probsBreak[break]*probsMake[make] = pow(cb, -break);");
 	}
 	if (caching)
@@ -741,12 +746,12 @@ void initExp() {
 void parseParameters(int argc, char *argv[]) {
 	//define the argument parser
 	static struct option long_options[] =
-			{ { "fct", required_argument, 0, 'f' }, { "caching", required_argument, 0, 'c' }, { "eps", required_argument, 0, 'e' }, { "cb", required_argument, 0, 'b' }, { "runs", required_argument, 0, 't' }, { "maxflips", required_argument, 0, 'm' }, { "printSolution", no_argument, 0, 'a' }, { "help", no_argument, 0, 'h' }, { 0, 0, 0, 0 } };
+			{ { "fct", required_argument, 0, 'f' },{ "cm", required_argument, 0, 'k' }, { "caching", required_argument, 0, 'c' }, { "eps", required_argument, 0, 'e' }, { "cb", required_argument, 0, 'b' }, { "runs", required_argument, 0, 't' }, { "maxflips", required_argument, 0, 'm' }, { "printSolution", no_argument, 0, 'a' }, { "help", no_argument, 0, 'h' }, { 0, 0, 0, 0 } };
 
 	while (optind < argc) {
 		int index = -1;
 		struct option * opt = 0;
-		int result = getopt_long(argc, argv, "f:e:c:b:t:m:ah", long_options, &index); //
+		int result = getopt_long(argc, argv, "f:e:k:c:b:t:m:ah", long_options, &index); //
 		if (result == -1)
 			break; /* end of list */
 		switch (result) {
@@ -861,7 +866,6 @@ void setupParameters() {
 				cb = 0.5;
 			}
 			eps = 0.9;
-			cm = 0.5;
 		} else if (maxClauseSize <= 4)
 			cb = 2.85;
 		else if (maxClauseSize <= 5)
@@ -870,6 +874,9 @@ void setupParameters() {
 			cb = 5.1;
 		else
 			cb = 5.4;
+	}
+	if (!cm_spec) {
+		cm = 0.5;
 	}
 	if (!fct_spec) {
 		if (maxClauseSize < 4)
