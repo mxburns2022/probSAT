@@ -856,7 +856,11 @@ void setupParameters() {
 		if (caching)
 			pickAndFlipVar = pickAndFlip; //cache the break values for other k-SAT
 		else
-			pickAndFlipVar = pickAndFlipNC; //no caching of the break values in case of 3SAT
+			if (fct != 2)
+				pickAndFlipVar = pickAndFlipNC; //no caching of the break values in case of 3SAT
+			else
+				pickAndFlipVar = pickAndFlipNC_MB; //no caching of the break values in case of 3SAT
+
 	}
 	if (!cb_spec) {
 		if (maxClauseSize <= 3) {
